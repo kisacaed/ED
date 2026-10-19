@@ -80,3 +80,11 @@ Yedek komutu başarısız olsa da uygulamayı tekrar başlatın. Aynı VM'deki y
 ## Kısıtlar
 
 Bu düzen tek sunuculudur; otomatik ölçekleme veya yüksek erişilebilirlik sağlamaz. Google Cloud projesine bağlanmadan, VM'yi oluşturmadan, DNS/HTTPS'yi ve gerçek giriş/teslim akışını o adreste doğrulamadan uygulama yayına alınmış sayılmaz. Hesap kapatma, parola sıfırlama, süper admin MFA ve veri saklama/silme politikası hâlâ ayrıca tamamlanmalıdır.
+
+## İlk kontrolde sessizce bekleme
+
+Güncel betik önce Compute Engine/IAP API'lerini etkinleştirir, ardından kaynakları `list` ile kontrol eder. Bütün Google hataları görünürdür; erişim reddi, kaynak yokmuş gibi değerlendirilmez. `[1/7]`–`[7/7]` mesajları aşamayı gösterir. API/faturalandırma/yetki hatası varsa bu aşamada durur; görünmeyen API etkinleştirme sorusu beklemez. Cloud Shell'in kendi **Authorize / Yetkilendir** penceresi açılırsa kendi Google hesabınızla onaylayın.
+
+Önceki sürüm `compute instances describe` kontrolünde bekliyorsa eski kurulumu durdurun, ardından `git pull --ff-only` ile güncelleyip tekrar çalıştırın. Mevcut bir VM tespit edilirse güncel betik onu/verilerini değiştirmeden durur. Silme veya sıfırlama yapmayın.
+
+Betik akışını Google'a bağlanmadan sınamak için: `python3 -m unittest discover -s deploy -p 'test_google_cloud.py'`. Bu testler sahte CLI ile API sırası, görünür hata ve hata sonrası kaynak oluşturulmamasını doğrular; gerçek Google Cloud kurulumunun doğrulandığı anlamına gelmez.
