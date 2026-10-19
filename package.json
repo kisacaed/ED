@@ -1,0 +1,26 @@
+{
+  "name": "ed-kocluk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "server": "node server/index.js",
+    "start": "node server/index.js",
+    "create-coach": "node server/create-coach.js",
+    "test": "node --test server/*.test.js",
+    "create-super-admin": "node server/create-coach.js --super-admin"
+  },
+  "devDependencies": {
+    "vite": "^6.4.0"
+  },
+  "dependencies": {
+    "express": "^5.3.0",
+    "sharp": "^0.35.5"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}

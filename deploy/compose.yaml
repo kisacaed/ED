@@ -1,0 +1,43 @@
+version: '3.8'
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: production
+      PUBLIC_ORIGIN: https://${APP_DOMAIN:?APP_DOMAIN alan adını ayarlayın}
+      PORT: 3001
+    restart: unless-stopped
+    volumes:
+      - ed_data:/app/data
+    expose:
+      - '3001'
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+  web:
+    image: caddy:2.10.2-alpine
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?APP_DOMAIN alan adını ayarlayın}
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+volumes:
+  ed_data:
+  caddy_data:
+  caddy_config:
