@@ -6,6 +6,8 @@ APP_DOMAIN=${2:-}
 REGION=${REGION:-europe-west3}
 ZONE=${ZONE:-europe-west3-a}
 APP_NAME=${APP_NAME:-ed-kocluk}
+RESUME=${RESUME:-0}
+[[ "$RESUME" == 0 || "$RESUME" == 1 ]] || { echo 'RESUME must be 0 or 1'; exit 1; }
 [[ "$PROJECT_ID" =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]$ ]] || { echo 'Invalid Project ID'; exit 1; }
 [[ -z "$APP_DOMAIN" || "$APP_DOMAIN" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?\.[a-z]{2,63}$ ]] || { echo 'Use a DNS hostname without scheme, port or path'; exit 1; }
 [[ "$REGION" =~ ^[a-z]+-[a-z]+[0-9]$ && "$ZONE" == "$REGION"-[a-z] ]] || { echo 'Region/zone mismatch'; exit 1; }
@@ -23,9 +25,27 @@ list_resources() { "${GCLOUD[@]}" "$@" --format='value(name)'; }
 echo '[2/7] Mevcut sunucu kontrol ediliyor...'
 EXISTING_INSTANCE=$(list_resources compute instances list --zones="$ZONE" --filter="name=$APP_NAME")
 if [[ -n "$EXISTING_INSTANCE" ]]; then
-  echo "Instance $APP_NAME already exists. Existing VM and data preserved; use the update instructions."
-  exit 1
-fi
+  if [[ "$RESUME" != 1 ]]; then
+    echo "Instance $APP_NAME already exists. Existing VM and data preserved; use RESUME=1 for interrupted installation."
+    exit 1
+  fi
+  echo '[3/7] Mevcut sunucu doğrulanıyor; ağ, IP ve disk korunacak...'
+  INSTANCE_METADATA=$("${GCLOUD[@]}" compute instances describe "$APP_NAME" --zone="$ZONE" --format=json)
+  APP_IP=$(python3 -c '
+import json,sys
+v=json.load(sys.stdin);name=sys.argv[1]
+if v.get("status")!="RUNNING":sys.exit("Sunucu RUNNING değil; mevcut durum korunuyor.")
+tags=v.get("tags",{}).get("items",[])
+if not all(t in tags for t in [name+"-web",name+"-iap"]):sys.exit("Sunucu uygulama etiketleri eşleşmiyor; işlem durduruldu.")
+interfaces=v.get("networkInterfaces",[])
+if not interfaces or not interfaces[0].get("network","").endswith("/networks/"+name+"-net"):sys.exit("Sunucu uygulama ağı eşleşmiyor; işlem durduruldu.")
+ips=[a.get("natIP") for a in interfaces[0].get("accessConfigs",[]) if a.get("natIP")]
+if not ips:sys.exit("Sunucunun dış IP adresi yok; işlem durduruldu.")
+print(ips[0])
+' "$APP_NAME" <<<"$INSTANCE_METADATA")
+  echo '[4/7] Mevcut RUNNING sunucuyla devam ediliyor.'
+else
+  if [[ "$RESUME" == 1 ]]; then echo 'Devam edilecek sunucu bulunamadı; yeni kaynak oluşturulmadı.' >&2; exit 1; fi
 # List errors are fatal; an access denial must never be treated as a missing resource.
 echo '[3/7] Ağ, güvenlik duvarı ve sabit IP hazırlanıyor...'
 EXISTING_NETWORK=$(list_resources compute networks list --filter="name=$APP_NAME-net")
@@ -49,14 +69,19 @@ if [[ -z "$EXISTING_ADDRESS" ]]; then
   "${GCLOUD[@]}" compute addresses create "$APP_NAME-ip" --region="$REGION" --network-tier=STANDARD
 fi
 APP_IP=$("${GCLOUD[@]}" compute addresses describe "$APP_NAME-ip" --region="$REGION" --format='value(address)')
+fi
 if [[ -z "$APP_DOMAIN" ]]; then
   APP_DOMAIN="${APP_IP}.sslip.io"
   AUTO_DOMAIN=1
 else
   AUTO_DOMAIN=0
 fi
+if [[ -z "$EXISTING_INSTANCE" ]]; then
 echo '[4/7] Uygulama sunucusu oluşturuluyor...'
 "${GCLOUD[@]}" compute instances create "$APP_NAME" --zone="$ZONE" --machine-type=e2-small --image-family=debian-12 --image-project=debian-cloud --boot-disk-size=30GB --boot-disk-type=pd-balanced --no-boot-disk-auto-delete --network="$APP_NAME-net" --subnet="$APP_NAME-subnet" --address="$APP_IP" --network-tier=STANDARD --tags="$APP_NAME-web,$APP_NAME-iap" --no-service-account --no-scopes --metadata=enable-oslogin=TRUE
+fi
+echo '[5/7] IAP/SSH bağlantısı kontrol ediliyor...'
+"${GCLOUD[@]}" compute ssh "$APP_NAME" --zone="$ZONE" --tunnel-through-iap --command='printf "BAGLANTI_TAMAM\n"'
 ARCHIVE=$(mktemp /tmp/ed-deploy.XXXXXX.tar.gz)
 trap 'rm -f "$ARCHIVE"' EXIT
 tar -czf "$ARCHIVE" Dockerfile .dockerignore package.json package-lock.json index.html vite.config.js src server deploy/compose.yaml deploy/Caddyfile
@@ -72,7 +97,11 @@ mkdir -p /srv/ed
 chmod 750 /srv/ed
 tar -xzf /tmp/ed-source.tar.gz -C /srv/ed
 rm /tmp/ed-source.tar.gz
-printf 'APP_DOMAIN=%s\n' '$APP_DOMAIN' > /srv/ed/deploy/.env
+if [[ ! -f /srv/ed/deploy/.env ]]; then
+  printf 'APP_DOMAIN=%s\n' '$APP_DOMAIN' > /srv/ed/deploy/.env
+else
+  echo 'Mevcut alan adı ayarı korunuyor.'
+fi
 cd /srv/ed/deploy
 docker-compose -p ed --env-file .env -f compose.yaml up -d --build
 REMOTE

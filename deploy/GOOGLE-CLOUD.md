@@ -88,3 +88,21 @@ Güncel betik önce Compute Engine/IAP API'lerini etkinleştirir, ardından kayn
 Önceki sürüm `compute instances describe` kontrolünde bekliyorsa eski kurulumu durdurun, ardından `git pull --ff-only` ile güncelleyip tekrar çalıştırın. Mevcut bir VM tespit edilirse güncel betik onu/verilerini değiştirmeden durur. Silme veya sıfırlama yapmayın.
 
 Betik akışını Google'a bağlanmadan sınamak için: `python3 -m unittest discover -s deploy -p 'test_google_cloud.py'`. Bu testler sahte CLI ile API sırası, görünür hata ve hata sonrası kaynak oluşturulmamasını doğrular; gerçek Google Cloud kurulumunun doğrulandığı anlamına gelmez.
+
+## VM çalışıyor, IAP aktarımı başarısız
+
+VM `RUNNING` durumunda olduğu halde IAP `Failed to lookup instance` hatası veriyorsa, önce bağlantıyı Google'ın teşhis aracıyla kontrol edin:
+
+```sh
+gcloud compute ssh ed-kocluk --project=sinavmatikkocgpt --zone=europe-west3-a --tunnel-through-iap --troubleshoot
+```
+
+Bu hata tek başına VM'nin silindiğini veya belirli bir IAM rolünün eksik olduğunu kanıtlamaz. Teşhis çıktısına göre IAP yetkisi, Google Cloud erişimi ve ağ erişimi kontrol edilmelidir. SSH'yi herkese açmayın veya hatayı aşmak için yeni VM oluşturmayın.
+
+Bağlantı düzeldikten sonra kaynakları oluşturmadan yarım kalan kuruluma devam edilebilir:
+
+```sh
+RESUME=1 bash deploy/google-cloud.sh sinavmatikkocgpt
+```
+
+Devam modu yalnızca beklenen uygulama ağı ve `ed-kocluk-web`/`ed-kocluk-iap` etiketleri bulunan RUNNING VM'yi kabul eder; mevcut IP ve diski korur. Önce IAP/SSH bağlantısını sınar; başarısızsa dosya aktarımı yapmadan durur. Varsa `deploy/.env` dosyasını ve Docker veri volume'lerini korur. Bu seçenek sunucu silme veya otomatik IAM yetkisi genişletme işlemi yapmaz.
